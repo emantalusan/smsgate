@@ -116,8 +116,6 @@ class SmsGate:
         """
         Initializes the SMTP module
         """
-        if not self.config.getboolean("mail", "enabled", fallback=True):
-            return
 
         self.smtp_delivery = smtp.SMTPDelivery(
             self.config.get("mail", "server"),
@@ -127,8 +125,9 @@ class SmsGate:
             self.config.getint("mail", "health_check_interval", fallback=600),
         )
 
-        self.smtp_delivery_thread = threading.Thread(target=self._do_smtp_delivery)
-        self.smtp_delivery_thread.start()
+        if self.config.getboolean("mail", "enabled", fallback=False):
+            self.smtp_delivery_thread = threading.Thread(target=self._do_smtp_delivery)
+            self.smtp_delivery_thread.start()
 
     def _do_smtp_delivery(self):
         """
@@ -268,7 +267,7 @@ class SmsGate:
                     assert self.smtp_delivery_thread is not None
                     assert self.smtp_delivery_thread.is_alive()
 
-                    if self.config.getboolean("mail", "enabled", fallback=True):
+                    if self.config.getboolean("mail", "enabled", fallback=False):
                         self.l.debug(f"[{sms.get_id()}] Put SMS into outgoing queue.")
                         self.smtp_delivery_queue.put(sms)
 
@@ -401,7 +400,7 @@ def main() -> None:
     root.addHandler(cons_handler)
 
     # apply seccomp
-    if server_config.getboolean("seccomp", "enabled", fallback=True):
+    if server_config.getboolean("seccomp", "enabled", fallback=False):
         setup_seccomp()
 
     # check config file permissions
