@@ -54,6 +54,9 @@ import modemconfig
 import modempool
 import rpcserver
 import smtp
+import incomming
+
+from sms import SMS
 
 
 class SmsGate:
@@ -70,6 +73,7 @@ class SmsGate:
         self.config = config
         self.smtp_delivery_queue = queue.Queue()
         self.event_available = threading.Event()
+        self.process_incomming_queue = queue.Queue()
 
         self.l = logging.getLogger("SmsGate")
 
@@ -77,6 +81,7 @@ class SmsGate:
         self._init_smtp_delivery()
         self._init_pool()
         self._init_rpcserver()
+        self._init_process_incomming()
 
     @staticmethod
     def read_sim_config(conf_file: str = "conf/sim-cards.conf") -> configparser.ConfigParser:
@@ -178,6 +183,54 @@ class SmsGate:
                 self.l.warning("_do_smtp_delivery(): Unknown exception.")
                 traceback.print_exc()
 
+    def _init_process_incomming(self) -> None:
+        """
+        Initializes the process incomming module
+        """
+
+        self.process_incomming = incomming.processSMS()
+
+        if self.config.getboolean("incomming", "enabled", fallback=True):
+            self.process_incomming_thread = threading.Thread(target=self._do_process_incomming)
+            self.process_incomming_thread.start()
+
+    def _do_process_incomming(self):
+        """
+        Internal method that checks the incomming queue for processing.
+        """
+
+        while True:
+            try:
+                self.l.debug("Check incomming queue if SMS should be processed.")
+                _sms = self.process_incomming_queue.get(timeout=10)
+                self.l.info(f"[{_sms.get_id()}] Event in incomming delivery queue.")
+
+                if _sms:
+                    self.l.info(f"[{_sms.get_id()}] Try to process SMS.")
+                    _api = self.process_incomming.process_sms(_sms)
+
+                    if _api["success"]:
+                        self.l.info(f"[{_sms.get_id()}] Incomming SMS hsas been processed")
+                        
+                        if _api["reply"]:
+                            self.l.debug(f"[ sender:{_sms.get_sender()} recipient:{_sms.get_recipient()} text:{_sms.get_text()} ]")
+                            new_sms = SMS(sms_id=None, recipient=_sms.get_sender(), sender=_sms.get_recipient(), text=_api["text"])
+                            self.pool.send_sms(new_sms)
+
+                    else:
+                        self.l.info(f"[{_sms.get_id()}] There was an error processing the SMS. Put SMS back into queue.")
+                        self.process_incomming_queue.put(_sms)
+                        time.sleep(30)
+
+            except queue.Empty:
+                self.l.debug("_do_process_incomming(): No SMS in queue.")
+            except Exception as e:
+                self.l.warning("Got exception.")
+                print(e)
+            except:
+                self.l.warning("_do_process_incomming(): Unknown exception.")
+                traceback.print_exc()
+
     def _init_pool(self) -> bool:
         """
         Initializes the modem pool.
@@ -264,12 +317,16 @@ class SmsGate:
                 if sms:
                     self.l.info(f"[{sms.get_id()}] Got incoming SMS")
 
-                    assert self.smtp_delivery_thread is not None
-                    assert self.smtp_delivery_thread.is_alive()
+                    # assert self.smtp_delivery_thread is not None
+                    # assert self.smtp_delivery_thread.is_alive()
 
                     if self.config.getboolean("mail", "enabled", fallback=False):
                         self.l.debug(f"[{sms.get_id()}] Put SMS into outgoing queue.")
                         self.smtp_delivery_queue.put(sms)
+
+                    if self.config.getboolean("incomming", "enabled", fallback=True):
+                        self.l.debug(f"[{sms.get_id()}] Process incomming SMS.")
+                        self.process_incomming_queue.put(sms)
 
                 else:
                     self.l.info("No incoming SMS")

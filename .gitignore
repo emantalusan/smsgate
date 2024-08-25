@@ -11,8 +11,5 @@ ENV/
 env.bak/
 venv.bak/
 
-conf/sim-cards.conf
-conf/smsgate.conf
 icinga/service-smsgate.conf
-conf/cert.pem
-conf/key.pem
+conf/
