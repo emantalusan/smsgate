@@ -213,7 +213,7 @@ class SmsGate:
                         self.l.info(f"[{_sms.get_id()}] Incomming SMS hsas been processed")
                         
                         if _api["reply"]:
-                            self.l.debug(f"[ sender:{_sms.get_sender()} recipient:{_sms.get_recipient()} text:{_sms.get_text()} ]")
+                            self.l.debug(f"Sending SMS reply sender:[{_sms.get_sender()}] recipient:[{_sms.get_recipient()}] text:[{_sms.get_text()} ]")
                             new_sms = SMS(sms_id=None, recipient=_sms.get_sender(), sender=_sms.get_recipient(), text=_api["text"])
                             self.pool.send_sms(new_sms)
 

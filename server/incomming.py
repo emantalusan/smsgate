@@ -61,19 +61,14 @@ class processSMS:
         @return: Returns JSON object for parsing.
         """
 
-        self.l.info(f"[{sms.get_id()}] Sending SMS via configured API.")
+        receiving_modem = sms.get_receiving_modem()
 
-        myModem = sms.get_receiving_modem()
-        self.l.info(f"[{myModem.modem_config}] < < < < < < < < < < .")
-        
-
-        api_url = "http://127.0.0.1:5000/api"
-        api_token = "cGstWjBPU3pMdkljT0kyVUl2RGhkVEdWVmZSU1NlaUdTdG5jZXF3VUU3bjBBaDo="
+        self.l.info(f"[{sms.get_id()}] Sending SMS via endpoint [{receiving_modem.modem_config.api_token}]")
 
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": "f'Basic {api_token}'"
+            "authorization": f"Basic  {receiving_modem.modem_config.api_token}"
         }
 
         payload = {
@@ -83,7 +78,7 @@ class processSMS:
             "text" : sms.get_text()
         }
 
-        response = requests.post(api_url, json=payload, headers=headers)
+        response = requests.post(receiving_modem.modem_config.api_endpoint, json=payload, headers=headers)
         
         return response.json()
 

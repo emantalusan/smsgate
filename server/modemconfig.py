@@ -65,6 +65,8 @@ class ModemConfig:
     imei: str
     encoding: str
     email_address: str
+    api_endpoint: str
+    api_token: str
 
     def verify(self) -> bool:
 
@@ -132,14 +134,16 @@ def read_modem_config(identifier: str, sim_config: configparser.ConfigParser,
         sim_config.get(identifier, "phone_number", fallback=None),
         sim_config.get(identifier, "ussd_account_balance", fallback=None),
         sim_config.get(identifier, "ussd_account_balance_regexp", fallback=None),
-        sim_config.get(identifier, "currency", fallback="EUR"),
-        sim_config.getfloat(identifier, "account_balance_warning", fallback=5),
-        sim_config.getfloat(identifier, "account_balance_critical", fallback=1),
+        sim_config.get(identifier, "currency", fallback="PHP"),
+        sim_config.getfloat(identifier, "account_balance_warning", fallback=100),
+        sim_config.getfloat(identifier, "account_balance_critical", fallback=10),
         sim_config.get(identifier, "prefixes", fallback="").split(),
-        sim_config.getfloat(identifier, "costs_per_sms"),
+        sim_config.getfloat(identifier, "costs_per_sms", fallback=1),
         sim_config.getint(identifier, "health_check_interval", fallback=600),
         sms_self_test_interval,
         sim_config.get(identifier, "imei", fallback=None),
         sim_config.get(identifier, "encoding", fallback="GSM"),
-        sim_config.get(identifier, "email_address", fallback=None)
+        sim_config.get(identifier, "email_address", fallback=None),
+        sim_config.get(identifier, "api_endpoint", fallback=None),
+        sim_config.get(identifier, "api_token", fallback=None)
     )
