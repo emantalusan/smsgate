@@ -1,7 +1,11 @@
 #
 import logging
 import requests
+import jwt 
 
+from datetime import datetime
+from datetime import timezone
+from datetime import timedelta
 
 from typing import  Dict
 from sms import SMS
@@ -61,14 +65,21 @@ class processSMS:
         @return: Returns JSON object for parsing.
         """
 
-        receiving_modem = sms.get_receiving_modem()
+        _modem = sms.get_receiving_modem()
 
-        self.l.info(f"[{sms.get_id()}] Sending SMS via endpoint [{receiving_modem.modem_config.api_token}]")
+        self.l.info(f"[{sms.get_id()}] Sending SMS via endpoint [{_modem.modem_config.api_endpoint}]")
+        
+        exp = datetime.now(tz=timezone.utc) + timedelta(seconds=300)
+        data = {"sender" : sms.get_sender(), "exp": exp}
+        self.l.info(f"[{sms.get_id()}] DATA [{data}]")
+
+        secret = f"{_modem.modem_config.api_endpoint}@{sms.get_sender()}"
+        token = jwt.encode(data, secret, algorithm="HS256")
 
         headers = {
             "accept": "application/json",
             "content-type": "application/json",
-            "authorization": f"Basic  {receiving_modem.modem_config.api_token}"
+            "authorization": f"Basic {token}"
         }
 
         payload = {
@@ -78,7 +89,6 @@ class processSMS:
             "text" : sms.get_text()
         }
 
-        response = requests.post(receiving_modem.modem_config.api_endpoint, json=payload, headers=headers)
+        response = requests.post(_modem.modem_config.api_endpoint, json=payload, headers=headers)
         
         return response.json()
-
