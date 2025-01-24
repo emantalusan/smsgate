@@ -68,12 +68,12 @@ class processSMS:
         _modem = sms.get_receiving_modem()
 
         self.l.info(f"[{sms.get_id()}] Sending SMS via endpoint [{_modem.modem_config.api_endpoint}]")
-        
+
         exp = datetime.now(tz=timezone.utc) + timedelta(seconds=300)
         data = {"sender" : sms.get_sender(), "exp": exp}
         self.l.info(f"[{sms.get_id()}] DATA [{data}]")
 
-        secret = f"{_modem.modem_config.api_endpoint}@{sms.get_sender()}"
+        secret = f"{_modem.modem_config.api_endpoint}@{_modem.modem_config.api_token}"
         token = jwt.encode(data, secret, algorithm="HS256")
 
         headers = {
