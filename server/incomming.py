@@ -73,8 +73,7 @@ class processSMS:
         data = {"sender" : sms.get_sender(), "exp": exp}
         self.l.info(f"[{sms.get_id()}] DATA [{data}]")
 
-        secret = f"{_modem.modem_config.api_endpoint}@{_modem.modem_config.api_token}"
-        token = jwt.encode(data, secret, algorithm="HS256")
+        token = jwt.encode(data, _modem.modem_config.api_token, algorithm="HS256")
 
         headers = {
             "accept": "application/json",
