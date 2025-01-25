@@ -3,6 +3,6 @@
 my_dir="$(dirname "$0")"
 cd "${my_dir}"
 
-cd /opt/smsgate
+cd ..
 . ./venv/bin/activate
 ./server/smsgate.py

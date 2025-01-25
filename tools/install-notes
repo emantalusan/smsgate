@@ -1,0 +1,36 @@
+su
+
+/usr/sbin/useradd -d /var/smsgate -m -s /usr/sbin/nologin smsgate
+/usr/sbin/usermod -a -G dialout smsgate
+
+apt install python3-venv rustc librust-openssl-dev
+
+mv smsgate /opt
+cd /opt/smsgate/
+
+python3 -m venv venv
+source venv/bin/activate
+pip3 install -r requirements.txt
+
+mkdir /var/smsgate
+
+cat /home/freebsd/sim-cards.conf 
+cat /home/freebsd/smsgate.conf 
+
+tools/make_cert.sh 
+
+chown -R root.smsgate /opt/smsgate /var/cache/smsgate
+chown -R root.smsgate /opt/smsgate 
+chmod 640 /opt/smsgate/conf/*.conf
+chmod 644 /opt/smsgate/conf/cert.pem
+chmod 770 /var/cache/smsgate
+
+cp smsgate.service /etc/systemd/system/
+chown root.root /etc/systemd/system/smsgate.service
+
+deactivate
+
+sudo systemctl daemon-reload
+sudo systemctl enable smsgate
+sudo systemctl start smsgate
+sudo systemctl status smsgate
