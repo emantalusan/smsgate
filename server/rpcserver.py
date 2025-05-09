@@ -46,6 +46,7 @@ import sms
 import logging
 import configparser
 import smtp
+import apidelivery  # NEW: Import for API delivery
 import modempool
 
 # Our global variable for OpenSSL Cipher settings. It is read from the config
@@ -61,6 +62,7 @@ class RPCServer(xmlrpc.XMLRPC):
             config: configparser.ConfigParser,
             _modempool: modempool.ModemPool,
             smtp_delivery: smtp.SMTPDelivery,
+            api_delivery: apidelivery.APIDelivery,  # NEW: Add api_delivery parameter
     ) -> None:
         """
         Create a new XMLRPC server interface.
@@ -70,6 +72,7 @@ class RPCServer(xmlrpc.XMLRPC):
         @param config: A configuration object of type ConfigParser.
         @param _modempool: A ModemPool object to interact with.
         @param smtp_delivery: The SMTPDelivery object.
+        @param api_delivery: The APIDelivery object.
         """
 
         self.rlevel = "OK"
@@ -80,6 +83,7 @@ class RPCServer(xmlrpc.XMLRPC):
         self.config = config
         self.pool = _modempool
         self.smtp_delivery = smtp_delivery
+        self.api_delivery = api_delivery  # NEW: Store api_delivery
         xmlrpc.XMLRPC.__init__(self)
 
         # read API token from configuration
@@ -90,6 +94,9 @@ class RPCServer(xmlrpc.XMLRPC):
             "api", "token_get_health_state"
         ).split()
         self.api_token["get_stats"] = config.get("api", "token_get_stats").split()
+        self.api_token["set_api_endpoint"] = config.get(  # NEW: Token for setting API endpoint
+            "api", "token_set_api_endpoint", fallback=""
+        ).split()
 
         self.api_token["get_sms"] = {}
         for modem_identifier in self.pool.get_identifier_for_phone_number():
@@ -228,14 +235,22 @@ class RPCServer(xmlrpc.XMLRPC):
 
         plevel, plogs = self.pool.get_health_state()  # polls the cached state
         slevel, slogs = self.smtp_delivery.get_health_state()
+        alevel, alogs = self.api_delivery.get_health_state() if self.api_delivery else ("OK", None)  # NEW: Include API health
 
+        logs = []
         if slogs:
-            slogs = slevel + ": " + slogs
+            logs.append(f"SMTP: {slevel}: {slogs}")
+        if alogs:
+            logs.append(f"API: {alevel}: {alogs}")
+        if plogs:
+            logs.append(f"ModemPool: {plevel}: {plogs}")
+        if self.rlogs:
+            logs.append(f"RPCServer: {self.rlevel}: {self.rlogs}")
 
-        highest_level = helper.get_highest_warning_level([plevel, slevel, self.rlevel])
-        combined_list = "; ".join(filter(None, [plogs, slogs, self.rlogs]))
+        highest_level = helper.get_highest_warning_level([plevel, slevel, alevel, self.rlevel])
+        combined_logs = "; ".join(filter(None, logs))
 
-        return highest_level, combined_list
+        return highest_level, combined_logs
 
     def xmlrpc_send_ussd(self, token: str, sender: str, ussd_code: str) -> Tuple[str, str]:
         """
@@ -299,6 +314,31 @@ class RPCServer(xmlrpc.XMLRPC):
 
         return "OK", self.pool.get_stats()
 
+    def xmlrpc_set_api_endpoint(self, token: str, url: str, api_token: str) -> str:
+        """
+        Exposed RPC function to set the API endpoint and token for API delivery.
+        @param token: The API token to use for authentication.
+        @param url: The new API endpoint URL.
+        @param api_token: The new API authorization token.
+        @return: Returns "OK" if successful, raises Fault on error.
+        """
+        if not self.config.getboolean("api_delivery", "enabled", fallback=False):
+            raise xmlrpc.Fault(405, "API delivery is not enabled.")
+
+        if not helper.check_token_in_list(token, self.api_token["set_api_endpoint"]):
+            self.l.error(
+                f"Invalid API token sent by client {self._getPeerAddress()}. API token was {token}."
+            )
+            raise xmlrpc.Fault(401, "Invalid API token.")
+
+        if self.api_delivery:
+            self.api_delivery.url = url
+            self.api_delivery.token = api_token
+            self.l.info(f"API endpoint updated to {url}.")
+            return "OK"
+        else:
+            raise xmlrpc.Fault(500, "API delivery module not initialized.")
+
 
 class MySSLContext(SSL.Context):
     def __init__(self, method):
@@ -317,6 +357,7 @@ def set_up_server(
         config: configparser.ConfigParser,
         modempool: modempool.ModemPool,
         smtp: smtp.SMTPDelivery,
+        api_delivery: apidelivery.APIDelivery,  # NEW: Add api_delivery parameter
 ) -> None:
     """
     Create a new XMLRPC server.
@@ -326,6 +367,7 @@ def set_up_server(
     @param config: A configuration object of type ConfigParser.
     @param modempool: A ModemPool object to interact with.
     @param smtp: The SMTPDelivery object.
+    @param api_delivery: The APIDelivery object.
     """
     global ciphers
 
@@ -352,7 +394,7 @@ def set_up_server(
     )
 
     l.debug("Launching site.")
-    factory = server.Site(RPCServer(config, modempool, smtp))
+    factory = server.Site(RPCServer(config, modempool, smtp, api_delivery))  # MODIFIED: Pass api_delivery
     l.debug("Listen for connections.")
     https_server.listen(factory)
     l.debug("Calling run().")

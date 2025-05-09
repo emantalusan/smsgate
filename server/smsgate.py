@@ -54,6 +54,7 @@ import modemconfig
 import modempool
 import rpcserver
 import smtp
+import apidelivery  # NEW: Import for API delivery module
 
 
 class SmsGate:
@@ -69,12 +70,14 @@ class SmsGate:
 
         self.config = config
         self.smtp_delivery_queue = queue.Queue()
+        self.api_delivery_queue = queue.Queue()  # NEW: Queue for API delivery
         self.event_available = threading.Event()
 
         self.l = logging.getLogger("SmsGate")
 
         # initialize sub-modules
         self._init_smtp_delivery()
+        self._init_api_delivery()  # NEW: Initialize API delivery
         self._init_pool()
         self._init_rpcserver()
 
@@ -108,7 +111,7 @@ class SmsGate:
 
         self.server_thread = threading.Thread(
             target=rpcserver.set_up_server,
-            args=(self.config, self.pool, self.smtp_delivery),
+            args=(self.config, self.pool, self.smtp_delivery, self.api_delivery),  # MODIFIED: Pass api_delivery
         )
         self.server_thread.start()
 
@@ -129,6 +132,23 @@ class SmsGate:
 
         self.smtp_delivery_thread = threading.Thread(target=self._do_smtp_delivery)
         self.smtp_delivery_thread.start()
+
+    def _init_api_delivery(self) -> None:
+        """
+        Initializes the API delivery module
+        """
+        if not self.config.getboolean("api_delivery", "enabled", fallback=False):
+            self.api_delivery = None
+            return
+
+        self.api_delivery = apidelivery.APIDelivery(
+            self.config.get("api_delivery", "url"),
+            self.config.get("api_delivery", "token"),
+            self.config.getint("api_delivery", "health_check_interval", fallback=600),
+        )
+
+        self.api_delivery_thread = threading.Thread(target=self._do_api_delivery)
+        self.api_delivery_thread.start()
 
     def _do_smtp_delivery(self):
         """
@@ -177,6 +197,38 @@ class SmsGate:
                 print(e)
             except:
                 self.l.warning("_do_smtp_delivery(): Unknown exception.")
+                traceback.print_exc()
+
+    def _do_api_delivery(self):
+        """
+        Internal method that checks the delivery queue for outgoing SMS that should be sent via API.
+        """
+        while True:
+            try:
+                self.l.debug("Check delivery queue if SMS should be sent via API. There are about %d SMS in the API delivery queue." % self.api_delivery_queue.qsize())
+                _sms = self.api_delivery_queue.get(timeout=10)
+                self.l.info(f"[{_sms.get_id()}] Event in SMS-to-API delivery queue.")
+                if _sms:
+                    self.l.info(f"[{_sms.get_id()}] Try to deliver SMS via API.")
+
+                    if self.api_delivery.send_sms(_sms):
+                        self.l.info(f"[{_sms.get_id()}] SMS was accepted by API endpoint.")
+                    else:
+                        self.l.info(f"[{_sms.get_id()}] There was an error delivering the SMS via API. Put SMS back into "
+                                    "queue and wait.")
+                        self.api_delivery_queue.put(_sms)
+                        self.api_delivery.do_health_check()
+                        time.sleep(30)
+
+            except queue.Empty:
+                self.l.debug(
+                    "_do_api_delivery(): No SMS in queue. Checking if health check should be run."
+                )
+                self.api_delivery.do_health_check()
+            except Exception as e:
+                self.l.warning("Got exception in API delivery: %s" % str(e))
+            except:
+                self.l.warning("_do_api_delivery(): Unknown exception.")
                 traceback.print_exc()
 
     def _init_pool(self) -> bool:
@@ -265,12 +317,19 @@ class SmsGate:
                 if sms:
                     self.l.info(f"[{sms.get_id()}] Got incoming SMS")
 
-                    assert self.smtp_delivery_thread is not None
-                    assert self.smtp_delivery_thread.is_alive()
-
+                    # SMTP delivery
                     if self.config.getboolean("mail", "enabled", fallback=True):
-                        self.l.debug(f"[{sms.get_id()}] Put SMS into outgoing queue.")
+                        assert self.smtp_delivery_thread is not None
+                        assert self.smtp_delivery_thread.is_alive()
+                        self.l.debug(f"[{sms.get_id()}] Put SMS into SMTP outgoing queue.")
                         self.smtp_delivery_queue.put(sms)
+
+                    # API delivery
+                    if self.config.getboolean("api_delivery", "enabled", fallback=False):
+                        assert self.api_delivery_thread is not None
+                        assert self.api_delivery_thread.is_alive()
+                        self.l.debug(f"[{sms.get_id()}] Put SMS into API outgoing queue.")
+                        self.api_delivery_queue.put(sms)
 
                 else:
                     self.l.info("No incoming SMS")

@@ -21,6 +21,7 @@ token_get_stats =  $2b$10$yPqkNIyAZuzxLebb/oROiuoFxv2h9AlORWnMO312G8N9.oem0Xnpi
 token_00_get_sms = $2b$10$MIeCuGE9mZ0DiLv0RHZbweFtMHgEf/Wr20aNniYTvvullbGs9Rc7e
 token_01_get_sms = $2b$10$MIeCuGE9mZ0DiLv0RHZbweFtMHgEf/Wr20aNniYTvvullbGs9Rc7e
 token_02_get_sms = $2b$10$MIeCuGE9mZ0DiLv0RHZbweFtMHgEf/Wr20aNniYTvvullbGs9Rc7e
+token_set_api_endpoint = your-secret-token
 
 [modempool]
 # Perform an internal health check after this time interval in seconds.
